@@ -29,7 +29,8 @@ typedef struct task{
 	int (*TickFct) (int);
 } task;
 
-char alpha[] = {'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'};
+unsigned char phone[] = {0x1c,0x16,0x1d,0x01,0x1d,0x16,0x1c,0x00}; 
+unsigned char alpha[] = {'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'};
 unsigned char alphaIndex = 0;
 unsigned char cursor = 1;
 unsigned char string[16];
@@ -46,7 +47,7 @@ int Tick_MENU(int state){
 			else if(!button1 && button2 && button3 && !button4) state = MENU_CLEAR;
 			else if(button1 && button2 && !button3 && !button4){state = MENU_EEPROM_READ; strcpy(tempString,string);}
 			else if(!button1 && !button2 && !button3 && button4) state = MENU_EEPROM_WRITE_PRESS;
-			else if(button1 && !button2 && !button3 && button4){state = SMILEY; strcpy(tempString,string);}
+			else if(button1 && !button2 && !button3 && button4){state = SMILEY; LCD_Cursor(1);}
 			else state = MENU_WAIT;
 			break;
 		case MENU_INC:
@@ -73,7 +74,7 @@ int Tick_MENU(int state){
 			break;
 		case SMILEY:
 			state = (button1 && button4)?(SMILEY):(MENU_WAIT);
-			if(state == MENU_WAIT){memset(string,0,16); strcpy(string,tempString);}
+			if(state == MENU_WAIT){LCD_Cursor(cursor);}
 			break;
 		default:
 			state = MENU_WAIT;
@@ -109,7 +110,7 @@ int Tick_MENU(int state){
 			eeprom_read_block((void*)&string,(const void*)12,16);
 			break;
 		case SMILEY:
-			strcpy(string,":)");
+			LCD_WriteData(0x00);
 			break;
 	}
 
@@ -133,6 +134,7 @@ int main(void) {
 	TimerSet(100);	
 	LCD_init();
 	string[0] = alpha[0];
+	LCD_BuildChar(0,phone);
 
 	unsigned char i;
 	while (1) {
@@ -143,8 +145,10 @@ int main(void) {
 			}
 			tasklist[i]->elapsedTime += 100;
 		}
+		if(tasklist[0]->state != SMILEY){
+			LCD_DisplayString(1,string);
+		}
 
-		LCD_DisplayString(1,string);
 		if(!button1 && !button2){
 			LCD_Cursor(cursor);
 			LCD_WriteData(alpha[alphaIndex]);

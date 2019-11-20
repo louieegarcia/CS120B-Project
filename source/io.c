@@ -78,3 +78,13 @@ void delay_ms(int miliSec) //for 8 Mhz crystal
    asm("nop");
   }
 }
+
+void LCD_BuildChar(unsigned char loc, unsigned char *characterArr) {
+	unsigned char i;
+	if(loc<8) //If valid address
+ 	{
+		LCD_WriteCommand(0x40+(loc*8)); //Write to CGRAM
+		for(i=0;i<8;i++)
+			LCD_WriteData(characterArr[i]); //Write the character pattern to CGRAM
+	}
+}
