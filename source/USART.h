@@ -25,7 +25,8 @@ void USART_Init( unsigned int baud ) {
   /* Enable receiver and transmitter */
   UCSRB = (1<<RXEN)|(1<<TXEN);
   /* Set frame format: 8data, 2stop bit */
-  UCSRC = (1<<USBS1)|(3<<UCSZ10);
+  //UCSRC = (1<<USBS1)|(3<<UCSZ10);
+  UCSRC = (1<<USBS0)|(3<<UCSZ00);
 }
 
 void USART_Send( unsigned char data ) {
