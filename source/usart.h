@@ -3,7 +3,8 @@
 // This software is provided with no warranties.
 
 ////////////////////////////////////////////////////////////////////////////////
-
+#include <avr/io.h>
+#include <inttypes.h>
 #ifndef USART_H
 #define USART_H
 
@@ -11,6 +12,17 @@
 #define F_CPU 8000000UL // Assume uC operates at 8MHz
 #define BAUD_RATE 9600
 #define BAUD_PRESCALE (((F_CPU / (BAUD_RATE * 16UL))) - 1)
+#define UCSRA	UCSR0A
+#define UCSRB	UCSR0B
+#define UCSRC	UCSR0C
+#define UBRRH	UBRR0H
+#define UBRRL	UBRR0L
+#define UDRE	UDRE0
+#define UDR	UDR0
+#define RXC	RXC0
+#define TXC	TXC0
+#define RXEN	RXEN0
+#define TXEN	TXEN0
 
 ////////////////////////////////////////////////////////////////////////////////
 //Functionality - Initializes TX and RX on PORT D
@@ -22,7 +34,7 @@ void initUSART()
 	// Use 8-bit character sizes - URSEL bit set to select the UCRSC register
 	// Turn on receiver and transmitter
 	UCSRB |= (1 << RXEN)  | (1 << TXEN);
-	UCSRC |= (1 << URSEL) | (1 << UCSZ0) | (1 << UCSZ1);
+	UCSRC |= (1 << URSEL) | (1 << UCSZ10) | (1 << UCSZ11);
 	// Load lower 8-bits of the baud rate value into the low byte of the UBRR register
 	UBRRL = BAUD_PRESCALE;
 	// Load upper 8-bits of the baud rate value into the high byte of the UBRR register
