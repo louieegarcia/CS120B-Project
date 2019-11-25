@@ -1,5 +1,8 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <avr/eeprom.h>
+#include <string.h>
+#include <stdio.h>
 #include "nokia5110.h"
 #include "timer.h"
 
@@ -15,8 +18,21 @@ typedef struct task{
 	int (*TickFct) (int);
 } task;
 
-enum states {MENU,STARTUP,TITLE};
+typedef struct user{
+	char name[10];
+	unsigned char id;
+} user;
+
+enum states {
+MENU,STARTUP,TITLE,ADDUSER,DELUSER,AUTHUSER,AUTHMODE,ADDUSER_INC_PRESS,ADDUSER_INC_REL,
+ADDUSER_DEC_PRESS, ADDUSER_DEC_REL, ADDUSER_CHOOSE
+};
+char alpha[] = {'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'};
+unsigned char alphaIndex = 0;
 unsigned long SMPeriod = 100;
+unsigned char cursorX = 0;
+unsigned char inputIndex = 0;
+unsigned char input[10];
 
 void PRINT_OPEN_EYE_FACE(unsigned char jump){
 	/***************************
@@ -100,6 +116,15 @@ void printMenu(unsigned char x){
 	nokia_lcd_render();
 }
 
+void userInput(){
+		nokia_lcd_clear();
+		nokia_lcd_set_cursor(0,0);
+		nokia_lcd_write_string("Input Name: ",1);
+		nokia_lcd_set_cursor(cursorX,10);
+		nokia_lcd_write_char(alpha[alphaIndex],1);
+		nokia_lcd_render();
+}
+
 int tick(int state){
 	static unsigned char count = 0;
 	static unsigned char menuItem = 10;
@@ -107,6 +132,21 @@ int tick(int state){
 	switch(state){
 		case MENU:
 			// BUTTON3 pushed, if menuItem equals 10,20,30,40 then choose corresponding mode
+			if(BUTTON3){
+				if(menuItem == 10){
+					state = ADDUSER;
+				} else if(menuItem == 20){
+					state = DELUSER;
+				} else if(menuItem == 30){
+					state = AUTHUSER;
+				} else if(menuItem == 40){
+					state = AUTHMODE;
+				} else{
+					state = MENU;
+				}
+			} else{
+				state = MENU;
+			}
 			break;
 		case STARTUP:
 			if(count == 11) state = TITLE;
@@ -118,6 +158,46 @@ int tick(int state){
 				nokia_lcd_clear();
 				count = 0;
 			}
+			break;
+		case ADDUSER:
+			if(BUTTON1){
+				state = ADDUSER_DEC_PRESS;
+			} else if(BUTTON2){
+				state = ADDUSER_INC_PRESS;
+			} else if(BUTTON3){
+				state = ADDUSER_CHOOSE;
+			} else if(BUTTON4){
+				state = MENU;
+				alphaIndex = 0;
+				cursorX = 0;
+				inputIndex = 0;
+			} else{
+				state = ADDUSER;
+			}
+			break;
+		case ADDUSER_DEC_PRESS:
+			state = (!BUTTON1)?(ADDUSER_DEC_REL):(ADDUSER_DEC_PRESS);
+			break;
+		case ADDUSER_DEC_REL:			
+			state = MENU;
+			break;
+		case ADDUSER_INC_PRESS:
+			state = (!BUTTON2)?(ADDUSER_INC_REL):(ADDUSER_INC_PRESS);
+			break;
+		case ADDUSER_INC_REL:
+			state = MENU;
+			break;
+		case ADDUSER_CHOOSE:
+			state = ADDUSER;
+			break;
+		case DELUSER:
+			state = (BUTTON4)?(MENU):(DELUSER);
+			break;
+		case AUTHUSER:
+			state = (BUTTON4)?(MENU):(AUTHUSER);
+			break;
+		case AUTHMODE:
+			state = (BUTTON4)?(MENU):(AUTHMODE);
 			break;
 		default:
 			state = MENU;
@@ -160,6 +240,42 @@ int tick(int state){
 		case TITLE:
 			count++;
 			break;
+		case ADDUSER:
+			userInput();
+			break;
+		case ADDUSER_INC_PRESS:
+			break;
+		case ADDUSER_INC_REL:
+			if(alphaIndex < 51) alphaIndex++;
+			break;
+		case ADDUSER_DEC_PRESS:
+			break;
+		case ADDUSER_DEC_REL:
+			if(alphaIndex > 0) alphaIndex--;
+			break;
+		case ADDUSER_CHOOSE:
+			input[inputIndex] = alpha[alphaIndex];
+			if(inputIndex<10) inputIndex++;
+			cursorX++;
+			break;
+		case DELUSER:
+			nokia_lcd_clear();
+			nokia_lcd_set_cursor(10,10);
+			nokia_lcd_write_string("DELUSER",1);
+			nokia_lcd_render();			
+			break;
+		case AUTHUSER:
+			nokia_lcd_clear();
+			nokia_lcd_set_cursor(10,10);
+			nokia_lcd_write_string("AUTHUSER",1);
+			nokia_lcd_render();			
+			break;
+		case AUTHMODE:
+			nokia_lcd_clear();
+			nokia_lcd_set_cursor(10,10);
+			nokia_lcd_write_string("AUTHMODE",1);
+			nokia_lcd_render();
+			break;
 	}
 
 	return state;
@@ -170,7 +286,7 @@ int main(){
 	DDRA = 0x00; PORTA = 0xFF;
 
 	task task1;
-	task1.state = STARTUP;
+	task1.state = MENU;
 	task1.period = 200;
 	task1.elapsedTime = task1.period;
 	task1.TickFct = &tick;
@@ -182,8 +298,6 @@ int main(){
 	TimerOn();
 	TimerSet(SMPeriod);
 
-	int stateHold = 0;
-
 	unsigned char i;
 	while(1){
 		for(i = 0; i < 1; i++){
@@ -194,8 +308,6 @@ int main(){
 			
 			tasklist[i]->elapsedTime += SMPeriod;
 		}
-
-		//stateHold = tick(stateHold);
 
 		while(!TimerFlag);
 		TimerFlag = 0;
