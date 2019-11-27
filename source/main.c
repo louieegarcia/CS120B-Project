@@ -23,16 +23,21 @@ typedef struct user{
 	unsigned char id;
 } user;
 
+user userList[5];
+unsigned char userListIndex = 0;
+unsigned char deleteMenuIndex = 0;
+unsigned char userListSize = 0;
+
 enum states {
 MENU,STARTUP,TITLE,ADDUSER,DELUSER,AUTHUSER,AUTHMODE,ADDUSER_INC_PRESS,ADDUSER_INC_REL,
-ADDUSER_DEC_PRESS, ADDUSER_DEC_REL, ADDUSER_CHOOSE
+ADDUSER_DEC_PRESS, ADDUSER_DEC_REL, ADDUSER_CHOOSE, DELUSER_INC,DELUSER_DEC,DELUSER_CONFIRM,DELUSER_DELETE
 };
 char alpha[] = {'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'};
 unsigned char alphaIndex = 0;
 unsigned long SMPeriod = 100;
 unsigned char cursorX = 0;
 unsigned char inputIndex = 0;
-unsigned char input[10];
+char input[10];
 
 void PRINT_OPEN_EYE_FACE(unsigned char jump){
 	/***************************
@@ -116,13 +121,27 @@ void printMenu(unsigned char x){
 	nokia_lcd_render();
 }
 
-void userInput(){
+void deleteUserMenu(){
+	nokia_lcd_clear();
+	nokia_lcd_set_cursor(10,10);
+	nokia_lcd_write_string(userList[deleteMenuIndex].name,1);
+	nokia_lcd_render();
+}
+
+void addUserInput(){
 		nokia_lcd_clear();
 		nokia_lcd_set_cursor(0,0);
 		nokia_lcd_write_string("Input Name: ",1);
-		nokia_lcd_set_cursor(cursorX,10);
+		nokia_lcd_set_cursor(0,10);
+		nokia_lcd_write_string(input,1);
+		nokia_lcd_set_cursor(0,20);
 		nokia_lcd_write_char(alpha[alphaIndex],1);
 		nokia_lcd_render();
+}
+
+void addUserToList(char input[10], unsigned char i){
+	strcpy(userList[i].name,input);	
+	userList[i].id = i;
 }
 
 int tick(int state){
@@ -135,6 +154,7 @@ int tick(int state){
 			if(BUTTON3){
 				if(menuItem == 10){
 					state = ADDUSER;
+					memset(input,0,sizeof(input));
 				} else if(menuItem == 20){
 					state = DELUSER;
 				} else if(menuItem == 30){
@@ -171,6 +191,7 @@ int tick(int state){
 				alphaIndex = 0;
 				cursorX = 0;
 				inputIndex = 0;
+				addUserToList(input, userListIndex);
 			} else{
 				state = ADDUSER;
 			}
@@ -179,19 +200,47 @@ int tick(int state){
 			state = (!BUTTON1)?(ADDUSER_DEC_REL):(ADDUSER_DEC_PRESS);
 			break;
 		case ADDUSER_DEC_REL:			
-			state = MENU;
+			state = ADDUSER;
 			break;
 		case ADDUSER_INC_PRESS:
 			state = (!BUTTON2)?(ADDUSER_INC_REL):(ADDUSER_INC_PRESS);
 			break;
 		case ADDUSER_INC_REL:
-			state = MENU;
+			state = ADDUSER;
 			break;
 		case ADDUSER_CHOOSE:
 			state = ADDUSER;
 			break;
 		case DELUSER:
-			state = (BUTTON4)?(MENU):(DELUSER);
+			if(BUTTON1){
+				state = DELUSER_DEC;
+			} else if(BUTTON2){
+				state = DELUSER_INC;
+			} else if(BUTTON3){
+				state = DELUSER_CONFIRM;
+			} else if(BUTTON4){
+				state = MENU;
+			} else{
+				state = DELUSER;
+			}
+			break;
+		case DELUSER_INC:
+			state = DELUSER;
+			break;
+		case DELUSER_DEC:
+			state = DELUSER;
+			break;
+		case DELUSER_CONFIRM:
+			if(BUTTON3){
+				state = DELUSER_DELETE;
+			} else if(BUTTON4){
+				state = DELUSER;
+			} else{
+				state = DELUSER_CONFIRM;
+			}
+			break;
+		case DELUSER_DELETE:
+			state = MENU;
 			break;
 		case AUTHUSER:
 			state = (BUTTON4)?(MENU):(AUTHUSER);
@@ -241,7 +290,7 @@ int tick(int state){
 			count++;
 			break;
 		case ADDUSER:
-			userInput();
+			addUserInput();
 			break;
 		case ADDUSER_INC_PRESS:
 			break;
@@ -256,13 +305,30 @@ int tick(int state){
 		case ADDUSER_CHOOSE:
 			input[inputIndex] = alpha[alphaIndex];
 			if(inputIndex<10) inputIndex++;
-			cursorX++;
+			if(userListSize<4) userListSize++;
 			break;
 		case DELUSER:
+			if(userListSize == 0){
+				nokia_lcd_clear();
+				nokia_lcd_set_cursor(0,10);
+				nokia_lcd_write_string("No users to delete. Please go back to the menu.",1);
+				nokia_lcd_render();
+			}
+			deleteUserMenu();			
+			break;
+		case DELUSER_INC:
+			if(deleteMenuIndex < userListSize) deleteMenuIndex++;
+			break;
+		case DELUSER_DEC:
+			if(deleteMenuIndex > 0) deleteMenuIndex--;
+			break;
+		case DELUSER_CONFIRM:
 			nokia_lcd_clear();
-			nokia_lcd_set_cursor(10,10);
-			nokia_lcd_write_string("DELUSER",1);
-			nokia_lcd_render();			
+			nokia_lcd_set_cursor(0,10);
+			nokia_lcd_write_string("Are you sure you want to delete this user?",1);
+			nokia_lcd_render();
+			break;
+		case DELUSER_DELETE:
 			break;
 		case AUTHUSER:
 			nokia_lcd_clear();
@@ -286,7 +352,7 @@ int main(){
 	DDRA = 0x00; PORTA = 0xFF;
 
 	task task1;
-	task1.state = MENU;
+	task1.state = STARTUP;
 	task1.period = 200;
 	task1.elapsedTime = task1.period;
 	task1.TickFct = &tick;
