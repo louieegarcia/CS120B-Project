@@ -18,13 +18,15 @@
 #define BUTTON3 (~PINA & 0x04)
 #define BUTTON4 (~PINA & 0x08)
 #define OBSTACLES_SIZE 12
-#define TASKS_SIZE 3
+#define TASKS_SIZE 5
 
 unsigned char START = 0;
 unsigned char END = 0;
 unsigned char SPEED = 1;
 unsigned char HEALTH = 3;
 unsigned char HIT = 0;
+unsigned char TIMER = 10;
+unsigned long SCORE = 0;
 
 typedef struct object{
 	unsigned char x;
@@ -38,6 +40,8 @@ typedef struct task{
 	unsigned long elapsedTime;
 	int (*TickFct) (int);
 } task;
+
+char nums[10] = {'1','2','3','4','5','6','7','8','9','0'};
 
 unsigned long clockTick = 100;
 object obstacles[OBSTACLES_SIZE]; 
@@ -153,9 +157,13 @@ void generateMob(){
 	nokia_lcd_write_char(Mob.sym,1);
 }
 
+void writeScore(unsigned char x){
+	SCORE += x;
+}
+
 void checkHitBox(){
 	HIT = 0;
-
+	unsigned char miss = 0;
 	unsigned char i;
 	for(i = 0; i < OBSTACLES_SIZE; i++){
 		if((Player.x >= obstacles[i].x-4 && Player.x <= obstacles[i].x+4) && Player.y == obstacles[i].y && !HIT){
@@ -166,7 +174,13 @@ void checkHitBox(){
 			nokia_lcd_set_cursor(Mob.x,Mob.y);
 			nokia_lcd_write_char(Mob.sym,1);
 			HIT = 1;
+		} else if(Player.y == obstacles[i].y){
+			miss = 1;
 		}
+	}
+
+	if(miss && !HIT){
+		writeScore(100);
 	}
 }
 
@@ -209,6 +223,76 @@ int Input_Tick(int state){
 	return state;
 }
 
+// Timer
+enum Timer_States {TIMER_WAIT,TIMER_DEC};
+
+int Timer_Tick(int state){
+	switch(state){
+		case TIMER_WAIT:
+			state = (START)?(TIMER_DEC):(TIMER_WAIT);
+			break;
+		case TIMER_DEC:
+			state = (!END)?(TIMER_DEC):(TIMER_WAIT);
+			break;
+		default:
+			state = TIMER_WAIT;
+			break;
+	}
+
+	switch(state){
+		case TIMER_DEC:
+			if(TIMER > 0) TIMER--;
+			break;
+	}
+
+	return state;
+}
+
+// Display
+enum Display_States{DISPLAY_WAIT,DISPLAY_SCORE_TIME};
+
+int Display_Tick(int state){
+	switch(state){
+		case DISPLAY_WAIT:
+			state = (START)?(DISPLAY_SCORE_TIME):(DISPLAY_WAIT);
+			if(state == DISPLAY_SCORE_TIME) LCD_ClearScreen();
+			break;
+		case DISPLAY_SCORE_TIME:
+			state = (!END)?(DISPLAY_SCORE_TIME):(DISPLAY_WAIT);
+			break;
+		default:
+			state = DISPLAY_WAIT;
+			break;
+	}
+
+	switch(state){
+		case DISPLAY_WAIT:
+			LCD_DisplayString(1,"Ready to play?");
+			break;
+		case DISPLAY_SCORE_TIME:
+			if(TIMER == 10){
+				LCD_Cursor(1);
+				LCD_WriteData(nums[0]);
+				LCD_Cursor(2);
+				LCD_WriteData(nums[TIMER-1]);
+				//LCD_DisplayString(4,(char *)SCORE);
+			} else if(TIMER == 9){
+				LCD_Cursor(1);
+				LCD_WriteData(nums[TIMER-1]);
+				LCD_Cursor(2);
+				LCD_WriteData(' ');
+				//LCD_DisplayString(4,(char *)SCORE);
+			} else if(TIMER == 0){
+				LCD_DisplayString(1,"SPEED UP");	
+			} else{
+				LCD_Cursor(1);
+				LCD_WriteData(nums[TIMER-1]);
+				//LCD_DisplayString(4,(char *)SCORE);
+			}
+			break;
+	}
+}
+
 // Game Logic
 enum Game_States{GAME_WAIT,GAME_ON,GAME_END,GAME_LEVEL_END};
 
@@ -222,18 +306,24 @@ int Game_Tick(int state){
 				START = 1;
 				END = 0;
 				HEALTH = 3;
+				SPEED = 1;
+				TIMER = 10;
 			}
 			break;
 		case GAME_ON:
 			if(BUTTON3 || !HEALTH){
 				state = GAME_END;
+			} else if(!TIMER){ 
+				state = GAME_LEVEL_END;
+				TIMER = 10;
 			} else{
 				state = GAME_ON;
 			}
 
-			if(state == GAME_END || state == GAME_LEVEL_END){
+			if(state == GAME_END){
 				END = 1;
 				START = 0;
+				HIT = 0;
 				nokia_lcd_clear();
 			}
 			break;
@@ -241,7 +331,7 @@ int Game_Tick(int state){
 			state = GAME_WAIT;
 			break;
 		case GAME_LEVEL_END:
-			state = GAME_WAIT;
+			state = GAME_ON;
 			break;
 		default:
 			state = GAME_WAIT;
@@ -258,6 +348,10 @@ int Game_Tick(int state){
 		case GAME_END:
 			break;
 		case GAME_LEVEL_END:
+			SPEED *= 2;
+			generateUser();
+			generateMob();
+			checkHitBox();
 			break;
 
 	}
@@ -265,9 +359,7 @@ int Game_Tick(int state){
 	return state;
 }
 
-// Timer
-//enum Timer_States {};
-
+// Main
 int main(){
 	DDRA = 0x00; PORTA = 0xFF;
 	DDRB = 0xFF; PORTB = 0x00;
@@ -287,21 +379,29 @@ int main(){
 	tasks[0].elapsedTime = tasks[0].period;
 	tasks[0].TickFct = &Input_Tick;
 
-	tasks[2].state = GAME_WAIT;
-	tasks[2].period = 200;
-	tasks[2].elapsedTime = tasks[0].period;
-	tasks[2].TickFct = &Game_Tick;
-
 	tasks[1].state = MAP_WAIT;
 	tasks[1].period = 200;
 	tasks[1].elapsedTime = tasks[0].period;
 	tasks[1].TickFct = &Map_Tick;
 
-	SPEED = 8;
+	tasks[2].state = GAME_WAIT;
+	tasks[2].period = 200;
+	tasks[2].elapsedTime = tasks[0].period;
+	tasks[2].TickFct = &Game_Tick;
+
+	tasks[3].state = TIMER_WAIT;
+	tasks[3].period = 1000;
+	tasks[3].elapsedTime = 0;
+	tasks[3].TickFct = &Timer_Tick;
+
+	tasks[4].state = DISPLAY_WAIT;
+	tasks[4].period = 200;
+	tasks[4].elapsedTime = tasks[4].period;
+	tasks[4].TickFct = &Display_Tick;
 
 	while(1){
-		PORTD = HIT;
-
+		//PORTD = HIT;
+		PORTD = (!TIMER) << 1 | HIT; 
 		unsigned char i;
 		for (i = 0; i < TASKS_SIZE; i++){
 			if(tasks[i].elapsedTime >= tasks[i].period){
