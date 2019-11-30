@@ -94,7 +94,7 @@ void MapInit(){
 
 void generateMap(){
 	unsigned char i = 0;
-	nokia_lcd_clear();
+
 	while(i < OBSTACLES_SIZE){
 		obstacles[i].y -= SPEED;
 		nokia_lcd_set_cursor(obstacles[i].x,obstacles[i].y);
@@ -158,7 +158,7 @@ void checkHitBox(){
 
 	unsigned char i;
 	for(i = 0; i < OBSTACLES_SIZE; i++){
-		if((Player.x >= obstacles[i].x-4 && Player.x <= obstacles[i].x+4) && Player.y == obstacles[i].y && !HIT){
+		if((Player.x >= obstacles[i].x && Player.x <= obstacles[i].x+4) && Player.y == obstacles[i].y){
 			HEALTH -= 1;
 			nokia_lcd_set_cursor(Mob.x,Mob.y);
 			nokia_lcd_write_char(' ',1);
@@ -287,17 +287,17 @@ int main(){
 	tasks[0].elapsedTime = tasks[0].period;
 	tasks[0].TickFct = &Input_Tick;
 
-	tasks[2].state = GAME_WAIT;
-	tasks[2].period = 200;
-	tasks[2].elapsedTime = tasks[0].period;
-	tasks[2].TickFct = &Game_Tick;
-
-	tasks[1].state = MAP_WAIT;
+	tasks[1].state = GAME_WAIT;
 	tasks[1].period = 200;
 	tasks[1].elapsedTime = tasks[0].period;
-	tasks[1].TickFct = &Map_Tick;
+	tasks[1].TickFct = &Game_Tick;
 
-	SPEED = 8;
+	tasks[2].state = MAP_WAIT;
+	tasks[2].period = 200;
+	tasks[2].elapsedTime = tasks[0].period;
+	tasks[2].TickFct = &Map_Tick;
+
+	SPEED = 2;
 
 	while(1){
 		PORTD = HIT;
