@@ -1,15 +1,34 @@
-#include <avr/io.h>
+//#include "mapGeneration.h"
+
+//#include "global.h"
 #include <avr/interrupt.h>
+#include <avr/io.h>
 #include <avr/eeprom.h>
 #include <string.h>
 #include <stdio.h>
+#include "io.h"
+//#include "timer.h"
+//#include "USART.h"
 #include "nokia5110.h"
-#include "timer.h"
-
+#ifdef _SIMULATE_
+#include "simAVRHeader.h"
+#endif
 #define BUTTON1 (~PINA & 0x01)
 #define BUTTON2 (~PINA & 0x02)
 #define BUTTON3 (~PINA & 0x04)
 #define BUTTON4 (~PINA & 0x08)
+#define OBSTACLES_SIZE 12
+#define TASKS_SIZE 3
+
+unsigned char START = 0;
+unsigned char END = 0;
+unsigned char SPEED = 2;
+
+typedef struct object{
+	unsigned char x;
+	unsigned char y;
+	unsigned char sym;
+} object;
 
 typedef struct task{
 	int state;
@@ -18,366 +37,254 @@ typedef struct task{
 	int (*TickFct) (int);
 } task;
 
-typedef struct user{
-	char name[10];
-	unsigned char id;
-} user;
+unsigned long clockTick = 100;
+object obstacles[OBSTACLES_SIZE]; 
 
-user userList[5];
-unsigned char userListIndex = 0;
-unsigned char deleteMenuIndex = 0;
-unsigned char userListSize = 0;
+// Timer Stuff
+unsigned char TimerFlag = 0;
+unsigned long _avr_timer_M = 1; // Start count from here, down to 0. Default 1ms
+unsigned long _avr_timer_cntcurr = 0; // Current internal count of 1ms ticks
 
-enum states {
-MENU,STARTUP,TITLE,ADDUSER,DELUSER,AUTHUSER,AUTHMODE,ADDUSER_INC_PRESS,ADDUSER_INC_REL,
-ADDUSER_DEC_PRESS, ADDUSER_DEC_REL, ADDUSER_CHOOSE, DELUSER_INC,DELUSER_DEC,DELUSER_CONFIRM,DELUSER_DELETE
-};
-char alpha[] = {'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'};
-unsigned char alphaIndex = 0;
-unsigned long SMPeriod = 100;
-unsigned char cursorX = 0;
-unsigned char inputIndex = 0;
-char input[10];
+void TimerOn(){
+	TCCR1B = 0x0B;
+	OCR1A = 125;
+	TIMSK1 = 0x02;
+	TCNT1 = 0;
+	_avr_timer_cntcurr = _avr_timer_M;
+	SREG |= 0x80;
+}
 
-void PRINT_OPEN_EYE_FACE(unsigned char jump){
-	/***************************
-	* LCD Dimensions: 84 x 48  *
-	* Start at 24 x 0, and     *
-	* write the pixels in from *
-	* 12 - 36 and 28 - 56      *
-	***************************/
-	unsigned char arr[] = {
-		20,30,100,19,30,100,18,30,100,17,30,100,16,30,100,15,30,100,14,30,100,13,30,100,12,30,100,11,30,100,10,30,100,
-		11,30,100,30,12,100,13,30,100,14,30,100,15,30,100,16,30,100,17,30,100,18,30,100,19,30,100,20,30,100,
-		30,100,30,100,30,100,30,100,
-		20,30,100,19,30,100,18,30,100,17,30,100,16,30,100,15,30,100,14,30,100,13,30,100,12,30,100,11,30,100,10,30,100,
-		11,30,100,30,12,100,13,30,100,14,30,100,15,30,100,16,30,100,17,30,100,18,30,100,19,30,100,20,30,100,
-	};
-	unsigned char i = 21;
-	unsigned char index = 0;
+void TimerOff(){
+	TCCR1B = 0x00;
+}
 
-	nokia_lcd_clear();
+void TimerISR(){
+	TimerFlag = 1;
+}
 
-	while(i < 67){
-		if(arr[index] == 100){
-			i++;
-			index++;
-		} else if(arr[index] == 101){
-			i+=4;
-			index++;
-		} else{
-			nokia_lcd_set_pixel(i,arr[index%sizeof(arr)]-jump,i);
-			index++;
-		}
+ISR(TIMER1_COMPA_vect){
+	_avr_timer_cntcurr--;
+	if(_avr_timer_cntcurr == 0){
+		TimerISR();
+		_avr_timer_cntcurr = _avr_timer_M;
 	}
-
-	nokia_lcd_render();
 }
 
-void PRINT_CLOSE_EYE_FACE(){
-	unsigned char arr[] = {
-		20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,
-		20,30,100,30,20,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,
-		30,100,30,100,30,100,30,100,
-		20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,
-		20,30,100,30,20,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,20,30,100,
-	};
+void TimerSet(unsigned long M){
+	_avr_timer_M = M;
+	_avr_timer_cntcurr = _avr_timer_M;
+}
 
-	unsigned char i = 21;
-	unsigned char index = 0;
+// Map Generation Stuff
+enum mapStates {MAP_WAIT,MAP_GENERATE};
 
-	nokia_lcd_clear();
-
-	while(i < 67){
-		if(arr[index] == 100){
-			i++;
-			index++;
-		} else if(arr[index] == 101){
-			i+=4;
-			index++;
-		} else{
-			nokia_lcd_set_pixel(i,arr[index%sizeof(arr)],i);
-			index++;
-		}
+void MapInit(){
+	// X range: 0 - 79
+	// Y range: 0 - 42, but we always want to create all the symbols on one line ( Y = 42 )
+	unsigned char i = 0;
+	while(i < OBSTACLES_SIZE){
+		obstacles[i].sym = '=';
+		obstacles[i].x = rand() % 80;
+		obstacles[i].y = 42;
+		i++;
 	}
-
-	nokia_lcd_render();
 }
 
-void printMenu(unsigned char x){
-	nokia_lcd_clear();
-	nokia_lcd_set_cursor(31,0);
-	nokia_lcd_write_string("Menu",1);
-	nokia_lcd_set_cursor(15,10);
-	nokia_lcd_write_string("Add User",1);
-	nokia_lcd_set_cursor(15,20);
-	nokia_lcd_write_string("Del User",1);
-	nokia_lcd_set_cursor(15,30);
-	nokia_lcd_write_string("Auth User",1);
-	nokia_lcd_set_cursor(15,40);
-	nokia_lcd_write_string("Auth Mode",1);
-	nokia_lcd_set_cursor(0,x);
-	nokia_lcd_write_string("*",1);
-	nokia_lcd_render();
+void generateMap(){
+	unsigned char i = 0;
+
+	while(i < OBSTACLES_SIZE){
+		obstacles[i].y -= SPEED;
+		nokia_lcd_set_cursor(obstacles[i].x,obstacles[i].y);
+		nokia_lcd_write_char(obstacles[i].sym,1);
+		if(obstacles[i].y <= 251 && obstacles[i].y >= 245){
+			obstacles[i].y = 42;
+			obstacles[i].x = rand() % 80;
+		}
+		i++;
+	}
 }
 
-void deleteUserMenu(){
-	nokia_lcd_clear();
-	nokia_lcd_set_cursor(10,10);
-	nokia_lcd_write_string(userList[deleteMenuIndex].name,1);
-	nokia_lcd_render();
-}
-
-void addUserInput(){
-		nokia_lcd_clear();
-		nokia_lcd_set_cursor(0,0);
-		nokia_lcd_write_string("Input Name: ",1);
-		nokia_lcd_set_cursor(0,10);
-		nokia_lcd_write_string(input,1);
-		nokia_lcd_set_cursor(0,20);
-		nokia_lcd_write_char(alpha[alphaIndex],1);
-		nokia_lcd_render();
-}
-
-void addUserToList(char input[10], unsigned char i){
-	strcpy(userList[i].name,input);	
-	userList[i].id = i;
-}
-
-int tick(int state){
-	static unsigned char count = 0;
-	static unsigned char menuItem = 10;
-
+int Map_Tick(int state){
 	switch(state){
-		case MENU:
-			// BUTTON3 pushed, if menuItem equals 10,20,30,40 then choose corresponding mode
-			if(BUTTON3){
-				if(menuItem == 10){
-					state = ADDUSER;
-					memset(input,0,sizeof(input));
-				} else if(menuItem == 20){
-					state = DELUSER;
-				} else if(menuItem == 30){
-					state = AUTHUSER;
-				} else if(menuItem == 40){
-					state = AUTHMODE;
-				} else{
-					state = MENU;
-				}
-			} else{
-				state = MENU;
-			}
+		case MAP_WAIT:
+			state = (START)?(MAP_GENERATE):(MAP_WAIT);
 			break;
-		case STARTUP:
-			if(count == 11) state = TITLE;
-			else state = STARTUP;
-			break;
-		case TITLE:
-			state = (count == 20)?(MENU):(TITLE);
-			if(state == MENU){
-				nokia_lcd_clear();
-				count = 0;
-			}
-			break;
-		case ADDUSER:
-			if(BUTTON1){
-				state = ADDUSER_DEC_PRESS;
-			} else if(BUTTON2){
-				state = ADDUSER_INC_PRESS;
-			} else if(BUTTON3){
-				state = ADDUSER_CHOOSE;
-			} else if(BUTTON4){
-				state = MENU;
-				alphaIndex = 0;
-				cursorX = 0;
-				inputIndex = 0;
-				addUserToList(input, userListIndex);
-			} else{
-				state = ADDUSER;
-			}
-			break;
-		case ADDUSER_DEC_PRESS:
-			state = (!BUTTON1)?(ADDUSER_DEC_REL):(ADDUSER_DEC_PRESS);
-			break;
-		case ADDUSER_DEC_REL:			
-			state = ADDUSER;
-			break;
-		case ADDUSER_INC_PRESS:
-			state = (!BUTTON2)?(ADDUSER_INC_REL):(ADDUSER_INC_PRESS);
-			break;
-		case ADDUSER_INC_REL:
-			state = ADDUSER;
-			break;
-		case ADDUSER_CHOOSE:
-			state = ADDUSER;
-			break;
-		case DELUSER:
-			if(BUTTON1){
-				state = DELUSER_DEC;
-			} else if(BUTTON2){
-				state = DELUSER_INC;
-			} else if(BUTTON3){
-				state = DELUSER_CONFIRM;
-			} else if(BUTTON4){
-				state = MENU;
-			} else{
-				state = DELUSER;
-			}
-			break;
-		case DELUSER_INC:
-			state = DELUSER;
-			break;
-		case DELUSER_DEC:
-			state = DELUSER;
-			break;
-		case DELUSER_CONFIRM:
-			if(BUTTON3){
-				state = DELUSER_DELETE;
-			} else if(BUTTON4){
-				state = DELUSER;
-			} else{
-				state = DELUSER_CONFIRM;
-			}
-			break;
-		case DELUSER_DELETE:
-			state = MENU;
-			break;
-		case AUTHUSER:
-			state = (BUTTON4)?(MENU):(AUTHUSER);
-			break;
-		case AUTHMODE:
-			state = (BUTTON4)?(MENU):(AUTHMODE);
+		case MAP_GENERATE:
+			state = (END)?(MAP_WAIT):(MAP_GENERATE);
 			break;
 		default:
-			state = MENU;
+			state = MAP_WAIT;
 			break;
 	}
 
 	switch(state){
-		case MENU:
-			if(BUTTON1){
-				if(menuItem >10){
-					menuItem -= 10;
-				}
-			} else if(BUTTON2){
-				if(menuItem < 40){
-					menuItem += 10;
-				}
-			}
-			
-			printMenu(menuItem);
+		case MAP_WAIT:
+			END = 0;
 			break;
-		case STARTUP:
-			if(count >= 5){
-				if(count%2 == 0){
-					PRINT_OPEN_EYE_FACE(0);
-				} else{
-					PRINT_OPEN_EYE_FACE(4);
-				}
-			} else if(count % 2 == 0){
-				PRINT_OPEN_EYE_FACE(0);
-			} else{
-				PRINT_CLOSE_EYE_FACE();
-			}
-			count++;
-			if(count == 11){
-				nokia_lcd_set_cursor(12,40);
-				nokia_lcd_write_string("BioSecurity",1);
-				nokia_lcd_render();
-			}
-			break;
-		case TITLE:
-			count++;
-			break;
-		case ADDUSER:
-			addUserInput();
-			break;
-		case ADDUSER_INC_PRESS:
-			break;
-		case ADDUSER_INC_REL:
-			if(alphaIndex < 51) alphaIndex++;
-			break;
-		case ADDUSER_DEC_PRESS:
-			break;
-		case ADDUSER_DEC_REL:
-			if(alphaIndex > 0) alphaIndex--;
-			break;
-		case ADDUSER_CHOOSE:
-			input[inputIndex] = alpha[alphaIndex];
-			if(inputIndex<10) inputIndex++;
-			if(userListSize<4) userListSize++;
-			break;
-		case DELUSER:
-			if(userListSize == 0){
-				nokia_lcd_clear();
-				nokia_lcd_set_cursor(0,10);
-				nokia_lcd_write_string("No users to delete. Please go back to the menu.",1);
-				nokia_lcd_render();
-			}
-			deleteUserMenu();			
-			break;
-		case DELUSER_INC:
-			if(deleteMenuIndex < userListSize) deleteMenuIndex++;
-			break;
-		case DELUSER_DEC:
-			if(deleteMenuIndex > 0) deleteMenuIndex--;
-			break;
-		case DELUSER_CONFIRM:
-			nokia_lcd_clear();
-			nokia_lcd_set_cursor(0,10);
-			nokia_lcd_write_string("Are you sure you want to delete this user?",1);
-			nokia_lcd_render();
-			break;
-		case DELUSER_DELETE:
-			break;
-		case AUTHUSER:
-			nokia_lcd_clear();
-			nokia_lcd_set_cursor(10,10);
-			nokia_lcd_write_string("AUTHUSER",1);
-			nokia_lcd_render();			
-			break;
-		case AUTHMODE:
-			nokia_lcd_clear();
-			nokia_lcd_set_cursor(10,10);
-			nokia_lcd_write_string("AUTHMODE",1);
-			nokia_lcd_render();
+		case MAP_GENERATE:
+			generateMap();
 			break;
 	}
 
 	return state;
 }
 
-int main(){
-	DDRB = 0xFF; PORTB = 0x00;
-	DDRA = 0x00; PORTA = 0xFF;
+// User (Robbers) and Mob(Cops)
+object Player = {40,9,'*'};
+object Mob = {40,0,'+'};
 
-	task task1;
-	task1.state = STARTUP;
-	task1.period = 200;
-	task1.elapsedTime = task1.period;
-	task1.TickFct = &tick;
+void UserInit(){
+	Player.x = 40;
+	Player.y = 9;
+	Mob.x = 40;
+	Mob.y = 0;
+}
 
-	task* tasklist[] = {&task1};
+void generateUser(){
+	nokia_lcd_set_cursor(Player.x,Player.y);
+	nokia_lcd_write_char(Player.sym,1);
+}
 
-	nokia_lcd_init();
+void generateMob(){
+	nokia_lcd_set_cursor(Mob.x,Mob.y);
+	nokia_lcd_write_char(Mob.sym,1);
+}
 
-	TimerOn();
-	TimerSet(SMPeriod);
+// User Input
+enum Input_States{INPUT_WAIT,INPUT_LEFT,INPUT_RIGHT};
 
-	unsigned char i;
-	while(1){
-		for(i = 0; i < 1; i++){
-			if(tasklist[i]->elapsedTime >= tasklist[i]->period){
-				tasklist[i]->state = tasklist[i]->TickFct(tasklist[i]->state);
-				tasklist[i]->elapsedTime = 0;
+int Input_Tick(int state){
+	switch(state){
+		case INPUT_WAIT:
+			if(BUTTON1) state = INPUT_RIGHT;
+			if(BUTTON2) state = INPUT_LEFT;
+			else state = INPUT_WAIT;
+			break;
+		case INPUT_LEFT:
+			state = (BUTTON2)?(INPUT_LEFT):(INPUT_WAIT);
+			break;
+		case INPUT_RIGHT:
+			state = (BUTTON1)?(INPUT_RIGHT):(INPUT_WAIT);
+			break;
+		default:
+			state = INPUT_WAIT;
+			break;
+	}
+
+	switch(state){
+		case INPUT_WAIT:
+			break;
+		case INPUT_LEFT:
+			Player.x += SPEED;
+			Mob.x = Player.x;
+			break;
+		case INPUT_RIGHT:
+			Player.x -= SPEED;
+			Mob.x = Player.x;
+			break;
+	}
+
+	return state;
+}
+
+// Game Logic
+enum Game_States{GAME_WAIT,GAME_ON,GAME_END,GAME_LEVEL_END};
+
+int Game_Tick(int state){
+	switch(state){
+		case GAME_WAIT:
+			state = (BUTTON4)?(GAME_ON):(GAME_WAIT);
+			if(state == GAME_ON){
+				nokia_lcd_clear();
+				UserInit();
+				MapInit();
+				START = 1;
+				END = 0;
 			}
-			
-			tasklist[i]->elapsedTime += SMPeriod;
+			break;
+		case GAME_ON:
+			state = (BUTTON3)?(GAME_END):(GAME_ON);
+			if(state == GAME_END || state == GAME_LEVEL_END){
+				nokia_lcd_clear();
+				END = 1;
+				START = 0;
+			}
+			break;
+		case GAME_END:
+			state = GAME_WAIT;
+			break;
+		case GAME_LEVEL_END:
+			state = GAME_WAIT;
+			break;
+		default:
+			state = GAME_WAIT;
+	}
+
+	switch(state){
+		case GAME_WAIT:
+			break;
+		case GAME_ON:
+			generateUser();
+			generateMob();
+			break;
+		case GAME_END:
+			break;
+		case GAME_LEVEL_END:
+			break;
+
+	}
+
+	return state;
+}
+
+int main(){
+	DDRA = 0x00; PORTA = 0xFF;
+	DDRB = 0xFF; PORTB = 0x00;
+	DDRC = 0xFF; PORTC = 0x00;
+	DDRD = 0xFF; PORTD = 0x00;
+	
+	LCD_init();
+	nokia_lcd_init();
+	MapInit();
+	TimerOn();
+	TimerSet(clockTick);
+
+	task tasks[TASKS_SIZE];
+
+	tasks[0].state = INPUT_WAIT;
+	tasks[0].period = 200;
+	tasks[0].elapsedTime = tasks[0].period;
+	tasks[0].TickFct = &Input_Tick;
+
+	tasks[1].state = GAME_WAIT;
+	tasks[1].period = 200;
+	tasks[1].elapsedTime = tasks[0].period;
+	tasks[1].TickFct = &Game_Tick;
+
+	tasks[2].state = MAP_WAIT;
+	tasks[2].period = 200;
+	tasks[2].elapsedTime = tasks[0].period;
+	tasks[2].TickFct = &Map_Tick;
+
+	while(1){
+		PORTD = START | END << 1;
+
+		unsigned char i;
+		for (i = 0; i < TASKS_SIZE; i++){
+			if(tasks[i].elapsedTime >= tasks[i].period){
+				tasks[i].state = tasks[i].TickFct(tasks[i].state);
+				tasks[i].elapsedTime = 0;
+			}
+			tasks[i].elapsedTime += clockTick;
 		}
+
+		nokia_lcd_render();
+		
 
 		while(!TimerFlag);
 		TimerFlag = 0;
 	}
 
-	return 1;
+	return -1;
 }
