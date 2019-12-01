@@ -1,23 +1,24 @@
-//#include "mapGeneration.h"
-
-//#include "global.h"
 #include <avr/interrupt.h>
 #include <avr/io.h>
 #include <avr/eeprom.h>
 #include <string.h>
 #include <stdio.h>
 #include "io.h"
-//#include "timer.h"
-//#include "USART.h"
+#include "snes.h"
 #include "nokia5110.h"
 #ifdef _SIMULATE_
 #include "simAVRHeader.h"
 #endif
-#define BUTTON1 (~PINA & 0x01)
-#define BUTTON2 (~PINA & 0x02)
-#define BUTTON3 (~PINA & 0x04)
-#define BUTTON4 (~PINA & 0x08)
-#define OBSTACLES_SIZE 12
+//#define BUTTON1 (~PINA & 0x01)
+//#define BUTTON2 (~PINA & 0x02)
+//#define BUTTON3 (~PINA & 0x04)
+//#define BUTTON4 (~PINA & 0x08)
+#define BUTTON1 (SNES_RIGHT)
+#define BUTTON2 (SNES_LEFT)
+#define BUTTON3 (SNES_START)
+#define BUTTON4 (SNES_A)
+#define NONE (SNES_NONE)
+#define OBSTACLES_SIZE 11
 #define TASKS_SIZE 5
 
 // Global variables and flags
@@ -26,10 +27,12 @@ unsigned char END = 0;
 unsigned char SPEED = 1;
 unsigned char HEALTH = 3;
 unsigned char HIT = 0;
+unsigned char MONEY = 0;
 unsigned char TIMER = 30;
 unsigned short SCORE = 0;
 unsigned long clockTick = 100;
 unsigned char count = 0;
+unsigned short userInput = 0;
 
 // Struct objects
 typedef struct object{
@@ -94,12 +97,16 @@ void MapInit(){
 	// X range: 0 - 79
 	// Y range: 0 - 42, but we always want to create all the symbols on one line ( Y = 42 )
 	unsigned char i = 0;
-	while(i < OBSTACLES_SIZE){
+	while(i < OBSTACLES_SIZE-1){
 		obstacles[i].sym = '=';
 		obstacles[i].x = rand() % 80;
 		obstacles[i].y = 42;
 		i++;
 	}
+
+	obstacles[OBSTACLES_SIZE-1].sym = '$';
+	obstacles[OBSTACLES_SIZE-1].x = rand() % 80;
+	obstacles[OBSTACLES_SIZE-1].y = 62;
 }
 
 void generateMap(){
@@ -169,19 +176,25 @@ void writeScore(unsigned char x){
 
 void checkHitBox(){
 	HIT = 0;
+	MONEY = 0;
 	unsigned char miss = 0;
 	unsigned char i;
 	for(i = 0; i < OBSTACLES_SIZE; i++){
 		if((Player.x >= obstacles[i].x-4 && Player.x <= obstacles[i].x+4) && Player.y == obstacles[i].y && !HIT){
-			HEALTH -= 1;
-			nokia_lcd_set_cursor(Mob.x,Mob.y);
-			nokia_lcd_write_char(' ',1);
-			Mob.y += 2;
-			nokia_lcd_set_cursor(Mob.x,Mob.y);
-			nokia_lcd_write_char(Mob.sym,1);
-			HIT = 1;
+			if(obstacles[i].sym == '$'){
+				MONEY = 1;
+				writeScore(200);
+			} else{
+				HEALTH -= 1;
+				nokia_lcd_set_cursor(Mob.x,Mob.y);
+				nokia_lcd_write_char(' ',1);
+				Mob.y += 2;
+				nokia_lcd_set_cursor(Mob.x,Mob.y);
+				nokia_lcd_write_char(Mob.sym,1);
+				HIT = 1;
+			}
 		} else if(Player.y == obstacles[i].y){
-			miss = 1;
+			if(obstacles[i].sym == '=') miss = 1;
 		}
 	}
 
@@ -196,15 +209,15 @@ enum Input_States{INPUT_WAIT,INPUT_LEFT,INPUT_RIGHT};
 int Input_Tick(int state){
 	switch(state){
 		case INPUT_WAIT:
-			if(BUTTON1) state = INPUT_RIGHT;
-			else if(BUTTON2) state = INPUT_LEFT;
+			if(userInput == BUTTON1) state = INPUT_RIGHT;
+			else if(userInput == BUTTON2) state = INPUT_LEFT;
 			else state = INPUT_WAIT;
 			break;
 		case INPUT_LEFT:
-			state = (BUTTON2)?(INPUT_LEFT):(INPUT_WAIT);
+			state = (userInput == BUTTON2)?(INPUT_LEFT):(INPUT_WAIT);
 			break;
 		case INPUT_RIGHT:
-			state = (BUTTON1)?(INPUT_RIGHT):(INPUT_WAIT);
+			state = (userInput == BUTTON1)?(INPUT_RIGHT):(INPUT_WAIT);
 			break;
 		default:
 			state = INPUT_WAIT;
@@ -278,10 +291,10 @@ enum Display_States{DISPLAY_WAIT,DISPLAY_READY,DISPLAY_CALL,DISPLAY_SCORE_TIME,D
 int Display_Tick(int state){
 	switch(state){
 		case DISPLAY_WAIT:
-			state = (BUTTON4)?(DISPLAY_READY):(DISPLAY_WAIT);
+			state = (userInput == BUTTON4)?(DISPLAY_READY):(DISPLAY_WAIT);
 			break;
 		case DISPLAY_READY:
-			state = (BUTTON4)?(DISPLAY_CALL):(DISPLAY_READY);
+			state = (userInput == BUTTON4)?(DISPLAY_CALL):(DISPLAY_READY);
 			if(state == DISPLAY_CALL){
 				memset(displayBuffer,0,sizeof(displayBuffer));
 				memset(tempBuffer,0,sizeof(tempBuffer));
@@ -302,10 +315,10 @@ int Display_Tick(int state){
 			}
 			break;
 		case DISPLAY_END:
-			state = (BUTTON4)?(DISPLAY_END2WAIT):(DISPLAY_END);
+			state = (userInput == BUTTON4)?(DISPLAY_END2WAIT):(DISPLAY_END);
 			break;
 		case DISPLAY_END2WAIT:
-			state = (!BUTTON4)?(DISPLAY_WAIT):(DISPLAY_END2WAIT);
+			state = (userInput == NONE)?(DISPLAY_WAIT):(DISPLAY_END2WAIT);
 			if(state == DISPLAY_WAIT){
 				memset(displayBuffer,0,sizeof(displayBuffer));
 				memset(tempBuffer,0,sizeof(tempBuffer));
@@ -363,11 +376,11 @@ int Game_Tick(int state){
 	
 	switch(state){
 		case GAME_INIT:
-			state = (BUTTON4)?(GAME_WAIT):(GAME_INIT);
-			if(BUTTON3) clearEEPROM();
+			state = (userInput == BUTTON4)?(GAME_WAIT):(GAME_INIT);
+			if(userInput == BUTTON3) clearEEPROM();
 			break;
 		case GAME_WAIT:
-			state = (BUTTON4)?(GAME_CALL):(GAME_WAIT);
+			state = (userInput == BUTTON4)?(GAME_CALL):(GAME_WAIT);
 			break;
 		case GAME_CALL:
 			state = (count == 15)?(GAME_ON):(GAME_CALL);
@@ -376,7 +389,7 @@ int Game_Tick(int state){
 				MapInit();
 				START = 1;
 				END = 0;
-				HEALTH = 1;
+				HEALTH = 3;
 				SPEED = 1;
 				TIMER = 20;
 				SCORE = 0;
@@ -402,10 +415,10 @@ int Game_Tick(int state){
 			}
 			break;
 		case GAME_END:
-			state = (BUTTON4)?(GAME_END2INIT):(GAME_END);
+			state = (userInput == BUTTON4)?(GAME_END2INIT):(GAME_END);
 			break;
 		case GAME_END2INIT:
-			state = (!BUTTON4)?(GAME_INIT):(GAME_END2INIT);
+			state = (userInput == NONE)?(GAME_INIT):(GAME_END2INIT);
 			break;
 		case GAME_LEVEL_END:
 			state = GAME_ON;
@@ -453,7 +466,8 @@ int Game_Tick(int state){
 
 // Main
 int main(){
-	DDRA = 0x00; PORTA = 0xFF;
+	//DDRA = 0x00; PORTA = 0xFF;
+	DDRA = 0x03; PORTA = 0x00;
 	DDRB = 0xFF; PORTB = 0x00;
 	DDRC = 0xFF; PORTC = 0x00;
 	DDRD = 0xFF; PORTD = 0x00;
@@ -495,8 +509,10 @@ int main(){
 	tasks[4].TickFct = &Display_Tick;
 
 	while(1){
-		PORTD = HIT;
-		//PORTD = (!TIMER) << 1 | HIT; 
+		userInput = SNES_Read();
+		
+		PORTD = (MONEY << 1) | HIT;
+
 		unsigned char i;
 		for (i = 0; i < TASKS_SIZE; i++){
 			if(tasks[i].elapsedTime >= tasks[i].period){
