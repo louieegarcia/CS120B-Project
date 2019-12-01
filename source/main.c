@@ -29,6 +29,7 @@ unsigned char HIT = 0;
 unsigned char TIMER = 30;
 unsigned short SCORE = 0;
 unsigned long clockTick = 100;
+unsigned char count = 0;
 
 // Struct objects
 typedef struct object{
@@ -272,27 +273,44 @@ void checkEEPROM(){
 }
 
 // Timer and Score Display
-enum Display_States{DISPLAY_WAIT,DISPLAY_SCORE_TIME,DISPLAY_END};
+enum Display_States{DISPLAY_WAIT,DISPLAY_READY,DISPLAY_CALL,DISPLAY_SCORE_TIME,DISPLAY_END,DISPLAY_END2WAIT};
 
 int Display_Tick(int state){
 	switch(state){
 		case DISPLAY_WAIT:
-			state = (START)?(DISPLAY_SCORE_TIME):(DISPLAY_WAIT);
+			state = (BUTTON4)?(DISPLAY_READY):(DISPLAY_WAIT);
+			break;
+		case DISPLAY_READY:
+			state = (BUTTON4)?(DISPLAY_CALL):(DISPLAY_READY);
+			if(state == DISPLAY_CALL){
+				memset(displayBuffer,0,sizeof(displayBuffer));
+				memset(tempBuffer,0,sizeof(tempBuffer));
+			}
+			break;
+		case DISPLAY_CALL:
+			state = (count == 15)?(DISPLAY_SCORE_TIME):(DISPLAY_CALL);
+			if(state == DISPLAY_SCORE_TIME){
+				memset(displayBuffer,0,sizeof(displayBuffer));
+				memset(tempBuffer,0,sizeof(tempBuffer));
+			}
 			break;
 		case DISPLAY_SCORE_TIME:
 			state = (START)?(DISPLAY_SCORE_TIME):(DISPLAY_END);
-			if(state == DISPLAY_WAIT){
+			if(state == DISPLAY_END){
 				memset(displayBuffer,0,sizeof(displayBuffer));
 				memset(tempBuffer,0,sizeof(tempBuffer));
 			}
 			break;
 		case DISPLAY_END:
-			state = (BUTTON4)?(DISPLAY_WAIT):(DISPLAY_END);
-			if(state == DISPLAY_SCORE_TIME){
+			state = (BUTTON4)?(DISPLAY_END2WAIT):(DISPLAY_END);
+			break;
+		case DISPLAY_END2WAIT:
+			state = (!BUTTON4)?(DISPLAY_WAIT):(DISPLAY_END2WAIT);
+			if(state == DISPLAY_WAIT){
 				memset(displayBuffer,0,sizeof(displayBuffer));
 				memset(tempBuffer,0,sizeof(tempBuffer));
 			}
-			break;	
+			break;
 		default:
 			state = DISPLAY_WAIT;
 			break;
@@ -303,7 +321,13 @@ int Display_Tick(int state){
 			strcpy(displayBuffer,"Cops and RobbersHigh score: ");
 			sprintf(tempBuffer,"%hu",getHighScore());
 			strcat(displayBuffer,tempBuffer);
-			break;		
+			break;
+		case DISPLAY_READY:
+			strcpy(displayBuffer,"Ready to play?");
+			break;
+		case DISPLAY_CALL:
+			DisplayScreen(2);
+			break;
 		case DISPLAY_SCORE_TIME:
 			strcpy(displayBuffer,"Score: ");
 			sprintf(tempBuffer,"%hu",SCORE);
@@ -313,6 +337,8 @@ int Display_Tick(int state){
 			strcpy(displayBuffer,"GAME OVER.      SCORE: ");
 			sprintf(tempBuffer,"%hu",SCORE);
 			strcat(displayBuffer,tempBuffer);
+			break;
+		case DISPLAY_END2WAIT:
 			break;
 	}
 	return state;
@@ -331,10 +357,10 @@ void DisplayScreen(unsigned char i){
 }
 
 // Game Logic
-enum Game_States{GAME_INIT,GAME_WAIT,GAME_CALL,GAME_ON,GAME_END,GAME_LEVEL_END};
+enum Game_States{GAME_INIT,GAME_WAIT,GAME_CALL,GAME_ON,GAME_END,GAME_END2INIT,GAME_LEVEL_END};
 
 int Game_Tick(int state){
-	static unsigned char count = 0;
+	
 	switch(state){
 		case GAME_INIT:
 			state = (BUTTON4)?(GAME_WAIT):(GAME_INIT);
@@ -376,7 +402,10 @@ int Game_Tick(int state){
 			}
 			break;
 		case GAME_END:
-			state = (BUTTON4)?(GAME_INIT):(GAME_END);
+			state = (BUTTON4)?(GAME_END2INIT):(GAME_END);
+			break;
+		case GAME_END2INIT:
+			state = (!BUTTON4)?(GAME_INIT):(GAME_END2INIT);
 			break;
 		case GAME_LEVEL_END:
 			state = GAME_ON;
@@ -395,7 +424,7 @@ int Game_Tick(int state){
 			break;
 		case GAME_CALL:
 			count++;
-			DisplayScreen(2);
+			//DisplayScreen(0);
 			break;
 		case GAME_ON:
 			generateUser();
@@ -404,6 +433,9 @@ int Game_Tick(int state){
 			DisplayScreen(0);
 			break;
 		case GAME_END:
+			DisplayScreen(0);
+			break;
+		case GAME_END2INIT:
 			DisplayScreen(0);
 			break;
 		case GAME_LEVEL_END:
