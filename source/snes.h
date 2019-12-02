@@ -63,7 +63,8 @@ unsigned short SNES_Read(){
     // For 16 clock cycles the controller outputs the keys pressed, 
 	// but first one is a bit different and some not used.
 	// See JChristy Part 6. 
-    for(int i = 0; i < 16; i++){
+    int i;
+    for(i = 0; i < 16; i++){
         SNES_PORT &= ~(0x01 << SNES_CLOCK);
         snes_pressed <<= 1;
         snes_pressed |= ( ( (~SNES_PIN) & (0x01  << SNES_DATA) ) >> SNES_DATA);      

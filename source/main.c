@@ -229,12 +229,12 @@ int Input_Tick(int state){
 			break;
 		case INPUT_LEFT:
 			nokia_lcd_clear();
-			Player.x += SPEED;
+			if(Player.x + SPEED < 80) Player.x += SPEED;
 			Mob.x = Player.x;
 			break;
 		case INPUT_RIGHT:
 			nokia_lcd_clear();
-			Player.x -= SPEED;
+			if(Player.x - SPEED >= 0) Player.x -= SPEED;
 			Mob.x = Player.x;
 			break;
 	}
