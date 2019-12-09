@@ -14,36 +14,40 @@ The purpose of the game is to last as long as you can while dodging obstacles an
 
 
 # Components/Technologies
-The components and technologies used for this project were:
-ATMEGA1284
-SNES Controller
-Nokia 5110 LCD Screen
-LEDs and Resistors
-1602A LCD Screen
-AVRdude
+The components and technologies used for this project were:<br />
+ATMEGA1284<br />
+SNES Controller<br />
+Nokia 5110 LCD Screen<br />
+LEDs and Resistors<br />
+1602A LCD Screen<br />
+AVRdude<br />
+
+
 
 # Complexities
-Nokia 5110 LCD
-SNES Controller
-Game Logic
-EEPROM
-Special Character on 1602A LCD Screen
+Nokia 5110 LCD<br />
+SNES Controller<br />
+Game Logic<br />
+EEPROM<br />
+Special Character on 1602A LCD Screen<br />
+
 
 # Links To Source
-## Nokia 5110: https://github.com/louieegarcia/CS120B-Project/blob/master/source/nokia5110.c
+## Nokia 5110:
 Sourced from https://github.com/LittleBuster/avr-nokia5110
 Creates an interface for using the Nokia 5110 LCD Screen.
 
-## Nokia 5110 Charset: https://github.com/louieegarcia/CS120B-Project/blob/master/source/nokia5110_chars.h
+## Nokia 5110 Charset:
 Source from https://github.com/LittleBuster/avr-nokia5110/blob/master/nokia5110_chars.h
 This creates the data to write to the Nokia 5110 in order to create characters. (a-z, A-Z, !@#$%^&*()~-=+)
 
-## SNES Controller: https://github.com/louieegarcia/CS120B-Project/blob/master/source/snes.h
+## SNES Controller:
 Sourced from https://github.com/MCoyne1234/CS120B_Labs/blob/master/CS120B_final/CS120B_final/headers/SNES.c
 Creates an interface for using the SNES Controller.
 
-## Game Logic and State Machines: https://github.com/louieegarcia/CS120B-Project/blob/master/source/main.c
+## Game Logic and State Machines:
 This is where all the game logic and state machines are implemented. Also the timer and EEPROM was implemented in this file.
+
 
 # Link To YouTube Video
 https://www.youtube.com/watch?v=vnJQltac0Xc&feature=youtu.be
