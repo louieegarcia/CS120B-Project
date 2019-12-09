@@ -12,6 +12,7 @@ Cops and Robbers is a game where you dodge randomly spawned obstacles while you 
 
 The purpose of the game is to last as long as you can while dodging obstacles and collecting $ tokens.
 
+
 # Components/Technologies
 The components and technologies used for this project were:
 ATMEGA1284
