@@ -1,4 +1,4 @@
-# CS120B-Project
+# CS120B Final Project Fall 2019
 Cops and Robbers is a game where you dodge randomly spawned obstacles while you are being chased by the police (which will be printed on the screen as + symbol). Dodging obstacles gives you 100 points and picking up randomly spawned dollar sign tokens, $, grants you an extra 200 points. If you hit an obstacle, you do not gain any points but you take a point of damage, a max of 3 per game, and the police get that much closer to you. As you progress through the game, every 20 seconds the game speeds up by double. Though technically this game has no end, the difficulty ramps up pretty quickly where the user will reduce their health to 0 in some finite amount of time. At the end, the score is printed to the LCD screen waiting for input to go back to the title screen, where the high score is printed.
 
 # User Guide
